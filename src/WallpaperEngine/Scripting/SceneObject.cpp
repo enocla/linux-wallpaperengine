@@ -134,8 +134,8 @@ JSValue get_cameraparallaxmouseinfluence (JSContext* ctx, JSValueConst this_val,
 }
 
 JSValue get_layer (JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
-    if (argc != 1) {
-	return JS_EXCEPTION;
+    if (argc < 1) {
+	return JS_ThrowTypeError (ctx, "getLayer expects a layer name or id");
     }
 
     auto* container = get_opaque (this_val);
@@ -149,12 +149,8 @@ JSValue get_layer (JSContext* ctx, JSValueConst this_val, int argc, JSValueConst
 
 	auto* object = container->getScene ().getObject (id);
 
-	if (object == nullptr) {
-	    return JS_UNDEFINED;
-	}
-
-	if (!object->is<ScriptableObject> ()) {
-	    return JS_UNDEFINED;
+	if (object == nullptr || !object->is<ScriptableObject> ()) {
+	    return JS_NULL;
 	}
 
 	// TODO: REMOVE THIS CONST_CAST?
@@ -166,7 +162,7 @@ JSValue get_layer (JSContext* ctx, JSValueConst this_val, int argc, JSValueConst
 	const char* result = JS_ToCString (ctx, layer);
 
 	if (result == nullptr) {
-	    return JS_UNDEFINED;
+	    return JS_EXCEPTION;
 	}
 
 	ScopeGuard guard ([=] { JS_FreeCString (ctx, result); });
@@ -184,7 +180,7 @@ JSValue get_layer (JSContext* ctx, JSValueConst this_val, int argc, JSValueConst
 	}
     }
 
-    return JS_EXCEPTION;
+    return JS_NULL;
 }
 
 JSValue scene_set_value (JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) { return JS_EXCEPTION; }

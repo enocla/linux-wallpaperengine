@@ -54,6 +54,48 @@ DBusHandlerResult dbus_message_filter (DBusConnection* connection, DBusMessage* 
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
+namespace {
+/**
+ * Reads a numeric value from DBus, MPRIS players don't agree on the integer type used for times
+ */
+double readNumber (DBusMessageIter& value) {
+    switch (dbus_message_iter_get_arg_type (&value)) {
+	case DBUS_TYPE_INT64:
+	    {
+		dbus_int64_t result = 0;
+		dbus_message_iter_get_basic (&value, &result);
+		return static_cast<double> (result);
+	    }
+	case DBUS_TYPE_UINT64:
+	    {
+		dbus_uint64_t result = 0;
+		dbus_message_iter_get_basic (&value, &result);
+		return static_cast<double> (result);
+	    }
+	case DBUS_TYPE_INT32:
+	    {
+		dbus_int32_t result = 0;
+		dbus_message_iter_get_basic (&value, &result);
+		return static_cast<double> (result);
+	    }
+	case DBUS_TYPE_UINT32:
+	    {
+		dbus_uint32_t result = 0;
+		dbus_message_iter_get_basic (&value, &result);
+		return static_cast<double> (result);
+	    }
+	case DBUS_TYPE_DOUBLE:
+	    {
+		double result = 0;
+		dbus_message_iter_get_basic (&value, &result);
+		return result;
+	    }
+	default:
+	    return 0.0;
+    }
+}
+} // namespace
+
 DBusMediaSource::DBusMediaSource (std::chrono::milliseconds updateInterval) : MediaSource (updateInterval) {
     DBusError err;
 
@@ -157,8 +199,7 @@ void DBusMediaSource::parseMetadata (DBusMessageIter& variant) {
 		albumUpdate = true;
 	    }
 	} else if (keyStr == "mpris:length") {
-	    int64_t length = 0;
-	    dbus_message_iter_get_basic (&value, &length);
+	    const double length = readNumber (value);
 
 	    if (this->m_mediaInfo.duration != length) {
 		this->m_mediaInfo.duration = length;
@@ -190,8 +231,14 @@ void DBusMediaSource::parsePlaybackStatus (DBusMessageIter& variant, const char*
     PlaybackState newState = this->m_mediaInfo.playbackState;
 
     if (statusStr == "Playing") {
-	if (sender != nullptr) {
+	if (sender != nullptr && this->m_currentPlayer != sender) {
+	    // another player took over, fetch its metadata and position as the signal only includes the status
 	    this->m_currentPlayer = sender;
+	    this->m_mediaInfo.playbackState = PlaybackState::Playing;
+	    this->initialStatusFetch ();
+	    this->performUpdate ();
+	    this->fireMetadataListeners ();
+	    return;
 	}
 
 	newState = PlaybackState::Playing;
@@ -208,8 +255,7 @@ void DBusMediaSource::parsePlaybackStatus (DBusMessageIter& variant, const char*
 }
 
 void DBusMediaSource::parsePosition (DBusMessageIter& variant) {
-    int64_t position = 0;
-    dbus_message_iter_get_basic (&variant, &position);
+    const double position = readNumber (variant);
 
     if (this->m_mediaInfo.position != position) {
 	this->m_mediaInfo.position = position;
@@ -241,10 +287,11 @@ DBusMessage* DBusMediaSource::dbusMessage (
 	dbus_message_append_args (msg, DBUS_TYPE_STRING, &iface, DBUS_TYPE_STRING, &prop, DBUS_TYPE_INVALID);
     }
 
-    DBusMessage* reply = dbus_connection_send_with_reply_and_block (m_connection, msg, -1, &err);
+    DBusMessage* reply = dbus_connection_send_with_reply_and_block (m_connection, msg, 500, &err);
 
     if (reply == nullptr) {
 	sLog.error ("DBus error: ", err.message, " (", err.name, ")");
+	dbus_error_free (&err);
 	return nullptr;
     }
 
@@ -288,15 +335,18 @@ void DBusMediaSource::detectPlayer () {
 	return;
     }
 
+    // prefer a player that is currently playing, otherwise keep track of a paused one so its metadata is available
+    // as soon as playback resumes
+    std::optional<std::string> pausedPlayer = std::nullopt;
+
     for (const auto& player : players) {
-	// also get playback status
 	reply = this->dbusMessage (
 	    player.c_str (), "/org/mpris/MediaPlayer2", "org.freedesktop.DBus.Properties", "Get",
 	    "org.mpris.MediaPlayer2.Player", "PlaybackStatus"
 	);
 
 	if (reply == nullptr) {
-	    return;
+	    continue;
 	}
 
 	Data::Utils::ScopeGuard guard2 ([reply] { dbus_message_unref (reply); });
@@ -306,11 +356,28 @@ void DBusMediaSource::detectPlayer () {
 	DBusMessageIter variant;
 	dbus_message_iter_recurse (&outer, &variant);
 
-	this->parsePlaybackStatus (variant, player.c_str ());
-
-	if (this->m_currentPlayer.has_value ()) {
-	    break;
+	if (dbus_message_iter_get_arg_type (&variant) != DBUS_TYPE_STRING) {
+	    continue;
 	}
+
+	const char* status = nullptr;
+	dbus_message_iter_get_basic (&variant, &status);
+	const std::string statusStr = status ?: "";
+
+	if (statusStr == "Playing") {
+	    this->m_currentPlayer = player;
+	    this->m_mediaInfo.playbackState = PlaybackState::Playing;
+	    return;
+	}
+
+	if (statusStr == "Paused" && !pausedPlayer.has_value ()) {
+	    pausedPlayer = player;
+	}
+    }
+
+    if (pausedPlayer.has_value ()) {
+	this->m_currentPlayer = pausedPlayer;
+	this->m_mediaInfo.playbackState = PlaybackState::Paused;
     }
 }
 
@@ -360,8 +427,7 @@ void DBusMediaSource::performUpdate () {
     DBusMessageIter variant;
     dbus_message_iter_recurse (&outer, &variant);
 
-    dbus_int64_t position = 0;
-    dbus_message_iter_get_basic (&variant, &position);
+    const double position = readNumber (variant);
 
     if (this->m_mediaInfo.position != position) {
 	this->m_mediaInfo.position = position;

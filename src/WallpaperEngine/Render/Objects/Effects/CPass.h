@@ -43,6 +43,11 @@ public:
     void setModelMatrix (const glm::mat4* model);
     void setViewProjectionMatrix (const glm::mat4* viewProjection);
     void setBlendingMode (BlendingMode blendingmode);
+    /**
+     * Makes the pass use white as color (g_Color, g_Color4) instead of the renderable's color.
+     * Must be called before the pass is set up.
+     */
+    void setNeutralColor (bool neutral);
     [[nodiscard]] BlendingMode getBlendingMode () const;
     [[nodiscard]] std::shared_ptr<const CFBO> resolveFBO (const std::string& name) const;
 
@@ -174,6 +179,7 @@ private:
     );
 
     CRenderable& m_renderable;
+    bool m_neutralColor = false;
     std::shared_ptr<const FBOProvider> m_fboProvider;
     const MaterialPass& m_pass;
     const TextureMap& m_binds;

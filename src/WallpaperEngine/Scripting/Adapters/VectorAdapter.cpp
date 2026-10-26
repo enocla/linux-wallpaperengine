@@ -190,7 +190,15 @@ JSValue vector_property_get (JSContext* ctx, JSValueConst obj_val, JSAtom atom, 
 	}
     }
 
-    return JS_EXCEPTION;
+    // exotic getters short-circuit the prototype chain, so methods (copy, add, toString...) are looked up manually
+    JSValue proto = JS_GetPrototype (ctx, obj_val);
+    ScopeGuard protoGuard ([=] { JS_FreeValue (ctx, proto); });
+
+    if (!JS_IsObject (proto)) {
+	return JS_UNDEFINED;
+    }
+
+    return JS_GetProperty (ctx, proto, atom);
 }
 
 template JSValue vector_property_get<2> (JSContext* ctx, JSValueConst obj_val, JSAtom atom, JSValueConst receiver);
@@ -206,10 +214,8 @@ int vector_property_set (
 
     VEC_MAGIC_CHECK_ERROR (container, components);
 
-    int tag = JS_VALUE_GET_TAG (val);
-
-    if (tag != JS_TAG_INT && !JS_TAG_IS_FLOAT64 (tag)) {
-	return -1;
+    if (!JS_IsNumber (val) && !JS_IsBool (val)) {
+	return 0;
     }
 
     const char* name = JS_AtomToCString (ctx, atom);
@@ -223,19 +229,15 @@ int vector_property_set (
     void* into = nullptr;
 
     if (strcmp (name, "x") == 0) {
-	if constexpr (
-	    std::is_same_v<decltype (vec), glm::vec2> || std::is_same_v<decltype (vec), glm::vec3>
-	    || std::is_same_v<decltype (vec), glm::vec4>
-	) {
+	if constexpr (std::is_same_v<decltype (vec), glm::vec2> || std::is_same_v<decltype (vec), glm::vec3>
+		      || std::is_same_v<decltype (vec), glm::vec4>) {
 	    into = &vec.x;
 	} else if constexpr (std::is_same_v<decltype (vec), Color>) {
 	    into = &vec.r;
 	}
     } else if (strcmp (name, "y") == 0) {
-	if constexpr (
-	    std::is_same_v<decltype (vec), glm::vec2> || std::is_same_v<decltype (vec), glm::vec3>
-	    || std::is_same_v<decltype (vec), glm::vec4>
-	) {
+	if constexpr (std::is_same_v<decltype (vec), glm::vec2> || std::is_same_v<decltype (vec), glm::vec3>
+		      || std::is_same_v<decltype (vec), glm::vec4>) {
 	    into = &vec.y;
 	} else if constexpr (std::is_same_v<decltype (vec), Color>) {
 	    into = &vec.g;
@@ -259,7 +261,7 @@ int vector_property_set (
     }
 
     if (into == nullptr) {
-	return -1;
+	return 0;
     }
 
     double value = 0;
@@ -270,7 +272,7 @@ int vector_property_set (
 
     container->value.update (vec, DynamicValue::UpdateSource::Script);
 
-    return 0;
+    return 1;
 }
 
 template int vector_property_set<2> (
@@ -370,14 +372,10 @@ template JSValue vector_length<4> (JSContext* ctx, JSValueConst this_val, int ar
 
 template <int components>
 JSValue vector_constructor (JSContext* ctx, JSValueConst new_target, int argc, JSValueConst* argv, int magic) {
-    if (argc == 0) {
-	return JS_EXCEPTION;
-    }
-
     auto it = vectorAdapterInstances<components>.find (magic);
 
     if (it == vectorAdapterInstances<components>.end ()) {
-	return JS_EXCEPTION;
+	return JS_ThrowInternalError (ctx, "Vector adapter not available");
     }
 
     JSValue result = it->second.instantiate ();
@@ -386,7 +384,48 @@ JSValue vector_constructor (JSContext* ctx, JSValueConst new_target, int argc, J
 
     VEC_MAGIC_CHECK_EXCEPTION (container, components);
 
-    container->value.update (vector_get<components> (ctx, argv[0]), DynamicValue::UpdateSource::Initialization);
+    if (argc == 0) {
+	// new VecN () is a zero vector
+	return result;
+    }
+
+    if (argc == 1) {
+	// new VecN (scalar) broadcasts, new VecN (otherVector) copies
+	try {
+	    container->value.update (vector_get<components> (ctx, argv[0]), DynamicValue::UpdateSource::Initialization);
+	} catch (const std::exception& e) {
+	    JS_FreeValue (ctx, result);
+	    return JS_ThrowTypeError (ctx, "%s", e.what ());
+	}
+
+	return result;
+    }
+
+    // new VecN (x, y[, z[, w]]), missing components default to 0
+    float values[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+    for (int i = 0; i < components && i < argc; i++) {
+	double component = 0.0;
+
+	if (JS_ToFloat64 (ctx, &component, argv[i]) < 0) {
+	    JS_FreeValue (ctx, result);
+	    return JS_EXCEPTION;
+	}
+
+	values[i] = static_cast<float> (component);
+    }
+
+    if constexpr (components == 2) {
+	container->value.update (glm::vec2 (values[0], values[1]), DynamicValue::UpdateSource::Initialization);
+    } else if constexpr (components == 3) {
+	container->value.update (
+	    glm::vec3 (values[0], values[1], values[2]), DynamicValue::UpdateSource::Initialization
+	);
+    } else {
+	container->value.update (
+	    glm::vec4 (values[0], values[1], values[2], values[3]), DynamicValue::UpdateSource::Initialization
+	);
+    }
 
     return result;
 }
@@ -924,7 +963,8 @@ VectorAdapter<components>::VectorAdapter (ScriptEngine& engine) :
     );
 
     JS_SetClassProto (this->m_engine.getContext (), this->m_classId, m_prototype);
-    JS_FreeValue (this->m_engine.getContext (), ctor);
+    // expose the constructor (Vec2, Vec3, Vec4) to the scripts
+    JS_SetPropertyStr (this->m_engine.getContext (), this->m_engine.getGlobalThis (), this->m_name.c_str (), ctor);
 }
 
 template <int components> VectorAdapter<components>::~VectorAdapter () {

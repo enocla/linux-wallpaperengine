@@ -1,10 +1,13 @@
 #pragma once
 #include "quickjs.h"
 
+#include "WallpaperEngine/Data/Model/DynamicValue.h"
+
 namespace WallpaperEngine::Render::Wallpapers {
 class CScene;
 }
 namespace WallpaperEngine::Scripting {
+using WallpaperEngine::Data::Model::DynamicValue;
 class ScriptEngine;
 class ScriptPropertiesObject {
 public:
@@ -17,6 +20,10 @@ public:
     [[nodiscard]] JSClassID getCreatorClassId () const { return m_creatorClassId; }
     [[nodiscard]] JSClassID getPropertiesClassId () const { return m_propertiesClassId; }
     [[nodiscard]] ScriptEngine& getEngine () const { return m_engine; }
+    /**
+     * @return A new object that exposes the script properties stored in the given value
+     */
+    [[nodiscard]] JSValue instantiate (DynamicValue& value);
 
 protected:
     Render::Wallpapers::CScene& m_scene;

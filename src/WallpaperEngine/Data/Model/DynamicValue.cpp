@@ -249,11 +249,26 @@ std::function<void ()> DynamicValue::listen (const std::function<void (const Dyn
 }
 
 void DynamicValue::connect (DynamicValue* other) {
-    const auto lambda = [this] (const DynamicValue& other, UpdateSource source) {
+    // values bound to user properties keep their own type when possible, e.g. a vec3 scale bound to a
+    // slider property is still a vec3 (with every component set to the slider's value)
+    const UnderlyingType ownType = this->m_type;
+
+    const auto lambda = [this, ownType] (const DynamicValue& other, UpdateSource source) {
 	// null is a special case, copying everything to 0 is different,
 	// so calling the update without parameters is required
 	if (other.getType () == UnderlyingType::Null) {
 	    this->update (source);
+	    return;
+	}
+
+	const bool scalar = other.getType () == UnderlyingType::Float || other.getType () == UnderlyingType::Int;
+
+	if (scalar && ownType == UnderlyingType::Vec2) {
+	    this->update (glm::vec2 (other.getFloat ()), source);
+	} else if (scalar && ownType == UnderlyingType::Vec3) {
+	    this->update (glm::vec3 (other.getFloat ()), source);
+	} else if (scalar && ownType == UnderlyingType::Vec4) {
+	    this->update (glm::vec4 (other.getFloat ()), source);
 	} else {
 	    this->update (other, source);
 	}

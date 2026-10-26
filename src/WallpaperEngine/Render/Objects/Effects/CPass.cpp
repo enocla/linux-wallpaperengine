@@ -857,13 +857,16 @@ void CPass::setupUniforms () {
     this->addUniform ("g_LightAmbientColor", sceneData.colors.ambient->value->getVec3 ());
     this->addUniform ("g_LightSkylightColor", sceneData.colors.skylight->value->getVec3 ());
     // register variables like brightness and alpha with some default value
-    this->addUniform ("g_Brightness", renderable.getBrightness ());
-    this->addUniform ("g_UserAlpha", renderable.getUserAlpha ());
-    this->addUniform ("g_Alpha", renderable.getAlpha ());
-    this->addUniform ("g_Color", renderable.getColor ());
-    this->addUniform ("g_Color4", renderable.getColor4 ());
+    // these are bound by reference so changes made by scripts (or user properties) are picked up every frame
+    this->addUniform ("g_Brightness", &renderable.getBrightness ());
+    this->addUniform ("g_UserAlpha", &renderable.getUserAlpha ());
+    this->addUniform ("g_Alpha", &renderable.getAlpha ());
+    static const glm::vec3 neutralColor (1.0f);
+    static const glm::vec4 neutralColor4 (1.0f);
+    this->addUniform ("g_Color", this->m_neutralColor ? &neutralColor : &renderable.getColor ());
+    this->addUniform ("g_Color4", this->m_neutralColor ? &neutralColor4 : &renderable.getColor4 ());
     if (!this->m_uniforms.contains ("g_CompositeColor")) {
-	this->addUniform ("g_CompositeColor", renderable.getCompositeColor ());
+	this->addUniform ("g_CompositeColor", &renderable.getCompositeColor ());
     }
     // add some external variables
     this->addUniform ("g_Time", &g_Time);
@@ -961,6 +964,8 @@ template <typename T> void CPass::addUniform (const std::string& name, UniformTy
 	name, new ReferenceUniformEntry (id, name, type, reinterpret_cast<const void**> (value))
     );
 }
+
+void CPass::setNeutralColor (bool neutral) { this->m_neutralColor = neutral; }
 
 void CPass::setupShaderVariables () {
     for (const auto& cur : this->m_shader->getVertex ().getParameters ()) {

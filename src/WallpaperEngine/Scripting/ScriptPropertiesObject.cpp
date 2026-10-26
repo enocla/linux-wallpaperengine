@@ -166,17 +166,18 @@ ScriptPropertiesObject::ScriptPropertiesObject (ScriptEngine& engine, Render::Wa
 	this->m_engine.getContext (), this->m_creatorPrototype, "finish",
 	JS_NewCFunction (this->m_engine.getContext (), scriptpropertiescreator_finish, "finish", 0), JS_PROP_ENUMERABLE
     );
-    JS_DefinePropertyValueStr (
-	this->m_engine.getContext (), this->m_engine.getGlobalThis (), "createScriptProperties",
-	JS_NewCFunctionMagic (
-	    this->m_engine.getContext (), scriptpropertiescreator_create, "createScriptProperties", 0, JS_CFUNC_generic,
-	    m_instanceId
-	),
-	JS_PROP_ENUMERABLE
-    );
+    // createScriptProperties () itself is implemented in builtins.js, it uses instances of the properties class
+    // created through instantiate () to expose the values coming from the scene file
 
     JS_SetClassProto (this->m_engine.getContext (), this->m_propertiesClassId, this->m_propertiesPrototype);
     JS_SetClassProto (this->m_engine.getContext (), this->m_creatorClassId, this->m_creatorPrototype);
+}
+
+JSValue ScriptPropertiesObject::instantiate (DynamicValue& value) {
+    JSValue result = JS_NewObjectClass (this->m_engine.getContext (), this->m_propertiesClassId);
+    JS_SetOpaque (result, new OpaqueScriptPropertiesInstance { .object = *this, .value = value });
+
+    return result;
 }
 
 ScriptPropertiesObject::~ScriptPropertiesObject () {

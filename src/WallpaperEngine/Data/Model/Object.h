@@ -612,7 +612,10 @@ struct TextData {
     std::string verticalalign;
     /** Padding inside the bounding box */
     int padding;
-    // TODO: PARSE LIMITS TOO!
+    /** Maximum width of a text row in scene units (exposed to scripts as `maxwidth`) */
+    float maxWidth;
+    /** Whether rendering is clipped to maxWidth */
+    bool limitWidth;
 };
 
 class Text : public Object, public TextData {

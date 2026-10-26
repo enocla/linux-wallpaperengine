@@ -100,6 +100,9 @@ CScene::CScene (
 	this->addObjectToRenderOrder (*object);
     }
 
+    // every object is available now, so scripts can safely look up other layers
+    this->m_scriptEngine->initialize ();
+
     // create extra framebuffers for the bloom effect
     this->_rt_4FrameBuffer = this->create (
 	"_rt_4FrameBuffer", TextureFormat_ARGB8888, TextureFlags_ClampUVs, 1.0, { sceneWidth / 4, sceneHeight / 4 },

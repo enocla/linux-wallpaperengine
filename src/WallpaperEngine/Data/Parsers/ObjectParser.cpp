@@ -137,6 +137,8 @@ TextUniquePtr ObjectParser::parseText (const JSON& it, const Project& project, O
 	    .alignment = it.optional ("horizontalalign", it.optional ("alignment", std::string ("center"))),
 	    .verticalalign = it.optional ("verticalalign", std::string ("center")),
 	    .padding = it.optional ("padding", 0),
+	    .maxWidth = it.optional ("maxwidth", 0.0f),
+	    .limitWidth = it.optional ("limitwidth", false),
 	}
     );
 }

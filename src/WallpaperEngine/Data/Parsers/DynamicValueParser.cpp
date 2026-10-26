@@ -1,9 +1,39 @@
 #include "DynamicValueParser.h"
 
+#include <sstream>
+
 #include "UserSettingParser.h"
 #include "WallpaperEngine/Data/Model/DynamicValue.h"
 
 using namespace WallpaperEngine::Data::Parsers;
+
+namespace {
+/**
+ * @return If the string is made of 2 to 4 numbers separated by whitespace
+ */
+bool isNumericVector (const std::string& str) {
+    std::istringstream stream (str);
+    std::string token;
+    int count = 0;
+
+    while (stream >> token) {
+	try {
+	    std::size_t parsed = 0;
+	    std::stof (token, &parsed);
+
+	    if (parsed != token.size ()) {
+		return false;
+	    }
+	} catch (const std::exception&) {
+	    return false;
+	}
+
+	count++;
+    }
+
+    return count >= 2 && count <= 4;
+}
+} // namespace
 
 DynamicValueUniquePtr DynamicValueParser::parse (const json& data, const Properties& properties, bool expectColor) {
     auto value = std::make_unique<DynamicValue> ();
@@ -30,7 +60,10 @@ DynamicValueUniquePtr DynamicValueParser::parse (const json& data, const Propert
 	    std::string str = valueIt;
 	    int size = Builders::VectorBuilder::preparseSize (str);
 
-	    if (size == 1) {
+	    if (size > 1 && !isNumericVector (str)) {
+		// texts with spaces in them (like "SONG NAME") are not vectors
+		value->update (str, DynamicValue::UpdateSource::Initialization);
+	    } else if (size == 1) {
 		// scalar? text value?
 		std::size_t parsed = 0;
 		try {

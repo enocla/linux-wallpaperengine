@@ -21,6 +21,7 @@ public:
     virtual JSValue instantiate (Data::Model::DynamicValue& value);
 
     ScriptEngine& getEngine () const { return m_engine; }
+    [[nodiscard]] JSClassID getClassId () const { return m_classId; }
 
 protected:
     void registerType (const JSClassDef& definition);

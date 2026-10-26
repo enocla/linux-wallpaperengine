@@ -183,6 +183,9 @@ CImage::CImage (Wallpapers::CScene& scene, const Image& image) :
     this->registerProperty ("color", *image.color->value);
     this->registerProperty ("parallaxDepth", *image.parallaxDepth->value);
 
+    const auto& color = image.color->value->getVec4 ();
+    this->m_color4 = glm::vec4 (glm::vec3 (color), color.a * image.alpha->value->getFloat ());
+
     // get scene width and height to calculate positions
     auto scene_width = static_cast<float> (scene.getWidth ());
     auto scene_height = static_cast<float> (scene.getHeight ());
@@ -213,10 +216,8 @@ CImage::CImage (Wallpapers::CScene& scene, const Image& image) :
     if ((size.x == 0.0f || size.y == 0.0f) && this->m_texture != nullptr) {
 	size.x = static_cast<float> (this->m_texture->getRealWidth ());
 	size.y = static_cast<float> (this->m_texture->getRealHeight ());
-    } else if (
-	(size.x == 0.0f || size.y == 0.0f) && this->getImage ().model->width.has_value ()
-	&& this->getImage ().model->height.has_value ()
-    ) {
+    } else if ((size.x == 0.0f || size.y == 0.0f) && this->getImage ().model->width.has_value ()
+	       && this->getImage ().model->height.has_value ()) {
 	size.x = static_cast<float> (this->getImage ().model->width.value ());
 	size.y = static_cast<float> (this->getImage ().model->height.value ());
     }
@@ -291,11 +292,9 @@ CImage::CImage (Wallpapers::CScene& scene, const Image& image) :
 	    / static_cast<float> (this->getTexture ()->getTextureHeight (0));
     }
     // calculate the correct texCoord limits for the texture based on the texture screen size and real size
-    else if (
-	this->getTexture () != nullptr
-	&& (this->getTexture ()->getTextureWidth (0) != this->getTexture ()->getRealWidth ()
-	    || this->getTexture ()->getTextureHeight (0) != this->getTexture ()->getRealHeight ())
-    ) {
+    else if (this->getTexture () != nullptr
+	     && (this->getTexture ()->getTextureWidth (0) != this->getTexture ()->getRealWidth ()
+		 || this->getTexture ()->getTextureHeight (0) != this->getTexture ()->getRealHeight ())) {
 	// Account for padding in non-power-of-two textures: clamp UVs to the real content
 	width = static_cast<float> (this->getTexture ()->getRealWidth ())
 	    / static_cast<float> (this->getTexture ()->getTextureWidth (0));
@@ -764,6 +763,8 @@ void CImage::setup () {
 	    *this, std::make_shared<FBOProvider> (this), **this->m_materials.colorBlending.material->passes.begin (),
 	    *this->m_materials.colorBlending.override, std::nullopt, std::nullopt
 	));
+	// color and alpha are already applied by the material's pass, applying them again would square them
+	this->m_passes.back ()->setNeutralColor (true);
     }
 
     // if there's more than one pass the blendmode has to be moved from the beginning to the end
@@ -916,8 +917,11 @@ void CImage::render () {
 	return;
     }
 
-    glColorMask (true, true, true, true);
+    // versioned shaders take the layer's alpha through g_Color4, keep it up to date with the alpha value
+    const auto& color = this->m_image.color->value->getVec4 ();
+    this->m_color4 = glm::vec4 (glm::vec3 (color), color.a * this->m_image.alpha->value->getFloat ());
 
+    glColorMask (true, true, true, true);
     // Always update screen transform (handles rotation + parallax dynamically)
     this->updateScreenSpacePosition ();
 
@@ -957,7 +961,7 @@ const float& CImage::getAlpha () const { return this->m_image.alpha->value->getF
 
 const glm::vec3& CImage::getColor () const { return this->m_image.color->value->getVec3 (); }
 
-const glm::vec4& CImage::getColor4 () const { return this->m_image.color->value->getVec4 (); }
+const glm::vec4& CImage::getColor4 () const { return this->m_color4; }
 
 const glm::vec3& CImage::getCompositeColor () const { return this->m_image.color->value->getVec3 (); }
 
@@ -967,10 +971,8 @@ glm::vec2 CImage::resolveGeometrySize (float sceneWidth, float sceneHeight, glm:
     if ((size.x == 0.0f || size.y == 0.0f) && this->m_texture != nullptr) {
 	size.x = static_cast<float> (this->m_texture->getRealWidth ());
 	size.y = static_cast<float> (this->m_texture->getRealHeight ());
-    } else if (
-	(size.x == 0.0f || size.y == 0.0f) && this->getImage ().model->width.has_value ()
-	&& this->getImage ().model->height.has_value ()
-    ) {
+    } else if ((size.x == 0.0f || size.y == 0.0f) && this->getImage ().model->width.has_value ()
+	       && this->getImage ().model->height.has_value ()) {
 	size.x = static_cast<float> (this->getImage ().model->width.value ());
 	size.y = static_cast<float> (this->getImage ().model->height.value ());
     }

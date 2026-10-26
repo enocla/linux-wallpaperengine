@@ -7,8 +7,8 @@
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 
+#include "WallpaperEngine/Data/Model/DynamicValue.h"
 #include "WallpaperEngine/Render/CObject.h"
-#include "WallpaperEngine/Scripting/ScriptEngine.h"
 #include "WallpaperEngine/Scripting/ScriptableObject.h"
 
 // Forward-declare FreeType types to avoid leaking the header into users.
@@ -25,17 +25,13 @@ namespace WallpaperEngine::Render::Objects {
 using namespace WallpaperEngine::Data::Model;
 
 /**
- * Phase 1 text renderer.
+ * Text renderer.
  *
- * Renders static text objects as a single FreeType-rasterized RGBA texture
- * drawn on a textured quad with its own minimal GLSL shader. Does NOT go
- * through CRenderable / materials / passes — Phase 1 does not need effects.
+ * Renders text objects as a single FreeType-rasterized texture drawn on a textured quad with its own minimal GLSL
+ * shader. Does NOT go through CRenderable / materials / passes, so effects on text layers are not supported.
  *
- * Phase 2 (scripted/dynamic text, alignment from properties, effect passes)
- * is intentionally not implemented here. When the scene provides a dynamic
- * `text: { script: "..." }` object this class captures the script source in
- * the data model but renders an empty string — the Wallpaper Engine JS
- * runtime required to evaluate it is out of scope for Phase 1.
+ * The text, alpha, color, origin... are exposed to the ScriptEngine, which takes care of running any script attached
+ * to them, this class only re-rasterizes the text whenever the value changes.
  */
 class CText final : virtual public CObject, public Scripting::ScriptableObject {
 public:
@@ -55,15 +51,18 @@ private:
 
     // setup() helpers (kept small to keep the setup flow linear).
     bool initFreeType ();
-    bool loadEmbeddedFont ();
+    bool loadFontFromAssets (const std::string& font);
     bool loadSystemFont ();
-    unsigned int computeEffectivePixelSize () const;
-    void initScriptLayer ();
+    unsigned int computePixelSize () const;
 
     const Text& m_text;
     std::string m_lastRenderedText;
     unsigned int m_lastPixelSize = 0;
-    Scripting::ScriptLayerHandle m_layerHandle = Scripting::kInvalidLayerHandle;
+
+    /** Size of the rendered text in scene units (before scaling), exposed to scripts as `size` */
+    DynamicValue m_sizeValue;
+    /** Exposed to scripts as `maxwidth` */
+    DynamicValue m_maxWidthValue;
 
     FT_Library m_ftLibrary = nullptr;
     FT_Face m_ftFace = nullptr;

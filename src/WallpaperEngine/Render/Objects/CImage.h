@@ -76,6 +76,9 @@ protected:
     [[nodiscard]] static ResolvedTransform localTransform (const WallpaperEngine::Data::Model::Object& object);
 
 private:
+    /** Color passed to the shaders as g_Color4, the alpha component includes the layer's alpha */
+    glm::vec4 m_color4 = glm::vec4 (1.0f);
+
     bool loadPuppetMesh (const glm::vec2& size);
     void updatePuppetPositionBuffer (const glm::vec2& size);
     void setupPuppetGeometryCallback (Effects::CPass* pass) const;

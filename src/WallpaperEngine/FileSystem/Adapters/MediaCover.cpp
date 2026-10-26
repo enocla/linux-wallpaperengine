@@ -1,6 +1,10 @@
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <sstream>
+#include <string>
+#include <string_view>
 
 #include "MediaCover.h"
 
@@ -10,6 +14,54 @@
 
 using namespace WallpaperEngine::FileSystem;
 using namespace WallpaperEngine::FileSystem::Adapters;
+
+namespace {
+/**
+ * Decodes %XX escapes used in file:// URLs
+ */
+std::string percentDecode (const std::string& input) {
+    std::string result;
+    result.reserve (input.size ());
+
+    for (size_t i = 0; i < input.size (); i++) {
+	if (input[i] == '%' && i + 2 < input.size () && std::isxdigit (input[i + 1]) && std::isxdigit (input[i + 2])) {
+	    result.push_back (static_cast<char> (std::stoi (input.substr (i + 1, 2), nullptr, 16)));
+	    i += 2;
+	} else {
+	    result.push_back (input[i]);
+	}
+    }
+
+    return result;
+}
+
+std::string base64Decode (const std::string& input) {
+    static constexpr std::string_view alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string result;
+    result.reserve (input.size () * 3 / 4);
+    uint32_t buffer = 0;
+    int bits = 0;
+
+    for (const char c : input) {
+	const auto index = alphabet.find (c);
+
+	if (index == std::string_view::npos) {
+	    // padding, whitespace and invalid characters are skipped
+	    continue;
+	}
+
+	buffer = (buffer << 6) | static_cast<uint32_t> (index);
+	bits += 6;
+
+	if (bits >= 8) {
+	    bits -= 8;
+	    result.push_back (static_cast<char> ((buffer >> bits) & 0xFF));
+	}
+    }
+
+    return result;
+}
+} // namespace
 
 ReadStreamSharedPtr MediaCoverAdapter::open (const std::filesystem::path& path) const {
     if (path != "$mediaThumbnail") {
@@ -24,11 +76,24 @@ ReadStreamSharedPtr MediaCoverAdapter::open (const std::filesystem::path& path) 
 
     std::string album = *source.getMediaInfo ().url;
 
+    // some players (like mpv-mpris) embed the cover as a base64 data URI
+    if (album.starts_with ("data:")) {
+	const auto separator = album.find (";base64,");
+
+	if (separator == std::string::npos) {
+	    throw std::filesystem::filesystem_error (
+		"Only base64 data URIs are supported for media covers", path, std::error_code ()
+	    );
+	}
+
+	return std::make_shared<std::istringstream> (base64Decode (album.substr (separator + 8)));
+    }
+
     if (album.starts_with ("file://")) {
-	album = album.substr (7);
+	album = percentDecode (album.substr (7));
     } else {
 	throw std::filesystem::filesystem_error (
-	    "Only file:// URLs are supported for media covers", album, std::error_code ()
+	    "Only file:// and data: URLs are supported for media covers", album, std::error_code ()
 	);
     }
 
