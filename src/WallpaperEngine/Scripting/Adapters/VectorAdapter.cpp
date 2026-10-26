@@ -4,6 +4,7 @@
 #include "WallpaperEngine/Data/Utils/SFINAE.h"
 #include "WallpaperEngine/Data/Utils/ScopeGuard.h"
 
+#include <ranges>
 #include <variant>
 
 using namespace WallpaperEngine::Data::Utils;
@@ -442,9 +443,15 @@ template <int components> void vector_finalizer (JSRuntime* rt, JSValueConst val
 	return;
     }
 
-    // free container and the associated DynamicValue if temporal
+    // free container and the associated DynamicValue if temporal. The adapter might already be gone when the
+    // runtime is being torn down (its values are freed with it), so only reach into it if it's still alive
     if (container->id != InvalidVectorInstanceId) {
-	container->adapter.free (container->id);
+	for (auto& adapter : vectorAdapterInstances<components> | std::views::values) {
+	    if (&adapter == &container->adapter) {
+		adapter.free (container->id);
+		break;
+	    }
+	}
     }
 
     delete container;
