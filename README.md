@@ -188,6 +188,7 @@ If you're one of those developers, feel free to open an issue to get your projec
 | `--screenshot <file>` | Save screenshot (PNG, JPEG, BMP) |
 | `--list-properties` | Show customizable properties of a wallpaper |
 | `--set-property name=value` | Override a specific property |
+| `--location=<lat>,<lon>` | Your location, used by properties set to `sunrise`/`sunset` |
 | `--disable-mouse` | Disable mouse interaction |
 | `--disable-parallax` | Disable parallax effect on backgrounds that support it |
 | `--no-fullscreen-pause` | Prevent pausing while fullscreen apps are running |
@@ -298,6 +299,16 @@ Any of these values can be modified with the --set-property switch. Say you want
 ```
 linux-wallpaperengine --set-property bloom=1 2370927443
 ```
+
+#### Follow sunrise and sunset
+
+Slider properties can also be set to `sunrise` or `sunset`, optionally with an offset (`sunrise+30m`, `sunset-1h`, `sunset+1.5h`). The value becomes the local time of that event in hours (`7.5` = 07:30), so it fits wallpapers whose day/night sliders take an hour of the day. It is recalculated while running, so it follows the seasons. This needs your latitude and longitude in decimal degrees (north and east are positive); use the `=` form so negative values aren't taken for options:
+```
+linux-wallpaperengine --location=43.46,-80.52 \
+    --set-property daystarttime=sunrise --set-property nightstarttime=sunset 3000562427
+```
+
+Wallpapers only check these values as often as their own scripts do. 3000562427 compares whole hours (`hour <= daystarttime` is still night), so with plain `sunrise`/`sunset` its day starts at the first full hour after sunrise and its night at the first full hour after sunset. Use `sunrise-30m` and `sunset-30m` instead to switch on the hour closest to each event.
 
 ---
 

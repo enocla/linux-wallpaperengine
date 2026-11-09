@@ -325,6 +325,10 @@ ScriptEngine::~ScriptEngine () {
     this->m_unregisterMediaUpdateCallback ();
     this->m_unregisterAlbumArtUpdateCallback ();
 
+    for (const auto& unregister : this->m_unregisterUserPropertyCallbacks) {
+	unregister ();
+    }
+
     for (const auto& module : this->m_scriptModules) {
 	JS_FreeValue (this->m_context, module->update);
 	JS_FreeValue (this->m_context, module->module);
@@ -595,11 +599,52 @@ void ScriptEngine::initialize () {
     this->broadcast ("applyUserProperties", properties);
     JS_FreeValue (ctx, properties);
 
+    // properties changed later on (e.g. the ones that follow sunrise/sunset) are sent again on the next frame
+    for (const auto& [name, property] : this->m_scene.getScene ().project.properties) {
+	if (property == nullptr) {
+	    continue;
+	}
+
+	this->m_unregisterUserPropertyCallbacks.push_back (
+	    property->listen ([this, name] (const DynamicValue&, const DynamicValue::UpdateSource source) {
+		if (source == DynamicValue::UpdateSource::User) {
+		    this->m_changedUserProperties.insert (name);
+		}
+	    })
+	);
+    }
+
     // let scripts know about the current media state
     this->notifyMediaUpdate (this->m_mediaSource.getMediaInfo (), true);
 }
 
+void ScriptEngine::notifyUserPropertiesUpdate () {
+    if (this->m_changedUserProperties.empty ()) {
+	return;
+    }
+
+    JSContext* ctx = this->m_context;
+    const auto& projectProperties = this->m_scene.getScene ().project.properties;
+    JSValue properties = JS_NewObject (ctx);
+
+    for (const auto& name : this->m_changedUserProperties) {
+	const auto it = projectProperties.find (name);
+
+	if (it == projectProperties.end () || it->second == nullptr || it->second->getType () == DynamicValue::Null) {
+	    continue;
+	}
+
+	JS_SetPropertyStr (ctx, properties, name.c_str (), this->dynamicToJsCopy (*it->second));
+    }
+
+    this->m_changedUserProperties.clear ();
+    this->broadcast ("applyUserProperties", properties);
+    JS_FreeValue (ctx, properties);
+}
+
 void ScriptEngine::tick () {
+    this->notifyUserPropertiesUpdate ();
+
     // run intervals
     this->m_engineObject->tick ();
 

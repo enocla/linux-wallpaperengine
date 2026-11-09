@@ -10,6 +10,7 @@
 #include <glm/vec4.hpp>
 
 #include "ApplicationState.h"
+#include "SolarTime.h"
 #include "WallpaperEngine/Data/JSON.h"
 
 #include "../Render/TextureProvider.h"
@@ -103,6 +104,8 @@ public:
 	    std::optional<PlaylistDefinition> defaultPlaylist;
 	    /** Span groups: multiple monitors sharing one stretched wallpaper */
 	    std::vector<SpanGroup> spanGroups;
+	    /** Location used to resolve properties set to sunrise/sunset */
+	    std::optional<SolarTime::Location> location;
 	} general;
 
 	/**
@@ -196,6 +199,7 @@ public:
             .screenPlaylists = {},
             .defaultPlaylist = std::nullopt,
             .spanGroups = {},
+            .location = std::nullopt,
         },
         .render = {
             .mode = NORMAL_WINDOW,

@@ -581,7 +581,10 @@ void ApplicationContext::loadSettingsFromArgv () {
 	.store_into (this->settings.general.onlyListProperties);
 
     configurationGroup.add_argument ("--set-property", "--property")
-	.help ("Overrides the default value of the given property")
+	.help (
+	    "Overrides the default value of the given property. Sliders also take sunrise/sunset with an optional "
+	    "offset (sunrise+30m, sunset-1h), see --location"
+	)
 	.action ([this] (const std::string& value) -> void {
 	    const std::string::size_type equals = value.find ('=');
 
@@ -593,6 +596,22 @@ void ApplicationContext::loadSettingsFromArgv () {
 	    }
 	})
 	.append ();
+
+    configurationGroup.add_argument ("--location")
+	.help (
+	    "Latitude and longitude (decimal degrees, north/east positive) used to resolve properties set to "
+	    "sunrise or sunset, e.g. --location=43.46,-80.52 --set-property daystarttime=sunrise "
+	    "--set-property nightstarttime=sunset-30m"
+	)
+	.action ([this] (const std::string& value) -> void {
+	    const auto location = SolarTime::parseLocation (value);
+
+	    if (!location.has_value ()) {
+		sLog.exception ("Invalid --location ", value, ", expected <latitude>,<longitude> like 43.46,-80.52");
+	    }
+
+	    this->settings.general.location = location;
+	});
 
     auto& debuggingGroup = program.add_group ("Debugging options");
 
@@ -665,6 +684,24 @@ void ApplicationContext::loadSettingsFromArgv () {
 	this->settings.audio.volume = std::max (0, std::min (this->settings.audio.volume, 128));
 	// give the wallpaper at least a few frames to settle before taking the screenshot
 	this->settings.screenshot.delay = std::max<uint32_t> (this->settings.screenshot.delay, 5);
+
+	// properties bound to the sun need to know where it is
+	for (const auto& [name, value] : this->settings.general.properties) {
+	    const bool looksSolar = value.rfind ("sunrise", 0) == 0 || value.rfind ("sunset", 0) == 0;
+
+	    if (looksSolar && !SolarTime::parseExpression (value).has_value ()) {
+		throw std::runtime_error (
+		    "Invalid value " + value + " for property " + name
+		    + ", expected sunrise or sunset with an optional offset like sunrise+30m or sunset-1.5h"
+		);
+	    }
+
+	    if (looksSolar && !this->settings.general.location.has_value ()) {
+		throw std::runtime_error (
+		    "Property " + name + " is set to " + value + ", which requires --location=<latitude>,<longitude>"
+		);
+	    }
+	}
 
 	// use std::cout on this in case logging is disabled, this way it's easy to look at what is running
 	std::stringbuf buffer;

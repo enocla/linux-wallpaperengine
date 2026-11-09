@@ -309,6 +309,8 @@ set(COMMON_SOURCES
 
     src/WallpaperEngine/Application/ApplicationContext.cpp
     src/WallpaperEngine/Application/ApplicationContext.h
+    src/WallpaperEngine/Application/SolarTime.cpp
+    src/WallpaperEngine/Application/SolarTime.h
     src/WallpaperEngine/Application/WallpaperApplication.cpp
     src/WallpaperEngine/Application/WallpaperApplication.h
 
@@ -565,7 +567,8 @@ if(BUILD_TESTING)
         src/WallpaperEngine/Testing/Harnesses/RenderHarness.h
         src/WallpaperEngine/Testing/Cases/MouseCoordinates.cpp
         src/WallpaperEngine/Testing/Cases/PropertyParser.cpp
-        src/WallpaperEngine/Testing/Cases/DynamicValue.cpp)
+        src/WallpaperEngine/Testing/Cases/DynamicValue.cpp
+        src/WallpaperEngine/Testing/Cases/SolarTime.cpp)
 endif()
 
 add_library(

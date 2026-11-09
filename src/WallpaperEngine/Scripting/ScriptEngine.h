@@ -11,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -134,6 +135,10 @@ private:
     void installBuiltins ();
 
     void notifyMediaUpdate (const Media::MediaSource::MediaInfo& media, bool force);
+    /**
+     * Sends the user properties changed since the last frame to applyUserProperties ()
+     */
+    void notifyUserPropertiesUpdate ();
 
     JSRuntime* m_runtime = nullptr;
     JSContext* m_context = nullptr;
@@ -158,6 +163,10 @@ private:
     std::optional<Media::MediaSource::MediaInfo> m_lastMedia;
     std::function<void ()> m_unregisterMediaUpdateCallback;
     std::function<void ()> m_unregisterAlbumArtUpdateCallback;
+    /** De-register functions for the user property listeners */
+    std::vector<std::function<void ()>> m_unregisterUserPropertyCallbacks;
+    /** User properties changed at runtime that scripts haven't been notified about yet */
+    std::set<std::string> m_changedUserProperties;
 
     JSObjectAdapters m_adapters;
 };

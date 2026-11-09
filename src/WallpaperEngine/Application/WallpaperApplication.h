@@ -115,6 +115,17 @@ private:
      */
     void setupPropertiesForProject (const Project& project);
     /**
+     * Resolves the properties of the given background that are set to sunrise/sunset
+     *
+     * @param project
+     * @param initial If this is the first resolution (on load), which logs the values and any issue
+     */
+    void updateSolarProperties (const Project& project, bool initial);
+    /**
+     * Re-resolves the sunrise/sunset properties of every background, at most once a minute
+     */
+    void updateSolarProperties ();
+    /**
      * Prepares CEF browser to be used
      */
     void setupBrowser ();
@@ -181,6 +192,8 @@ private:
     bool m_screenShotTaken = false;
     uint32_t m_nextFrameScreenshot = 0;
     std::chrono::steady_clock::time_point m_pauseStart {};
+    /** When properties set to sunrise/sunset are resolved again */
+    std::chrono::steady_clock::time_point m_nextSolarUpdate {};
     GLuint m_destinationFramebuffer = 0;
 };
 } // namespace WallpaperEngine::Application

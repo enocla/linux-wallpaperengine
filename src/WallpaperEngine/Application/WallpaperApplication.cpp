@@ -2,6 +2,7 @@
 
 #include "Steam/FileSystem/FileSystem.h"
 #include "WallpaperEngine/Application/ApplicationState.h"
+#include "WallpaperEngine/Application/SolarTime.h"
 #include "WallpaperEngine/Assets/AssetLoadException.h"
 #include "WallpaperEngine/Audio/Drivers/Detectors/PulseAudioPlayingDetector.h"
 #include "WallpaperEngine/FileSystem/Container.h"
@@ -24,6 +25,8 @@
 
 #include <algorithm>
 #include <climits>
+#include <cmath>
+#include <ctime>
 #include <numeric>
 #include <unistd.h>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -506,14 +509,87 @@ void WallpaperApplication::setupPropertiesForProject (const Project& project) {
 	auto override = this->m_context.settings.general.properties.find (key);
 
 	if (override != this->m_context.settings.general.properties.end ()) {
-	    sLog.out ("Applying override value for ", key);
+	    // sunrise/sunset values are resolved below
+	    if (!(cur->is<PropertySlider> () && SolarTime::parseExpression (override->second).has_value ())) {
+		sLog.out ("Applying override value for ", key);
 
-	    cur->update (override->second, DynamicValue::UpdateSource::User);
+		cur->update (override->second, DynamicValue::UpdateSource::User);
+	    }
 	}
+    }
 
-	if (this->m_context.settings.general.onlyListProperties) {
+    this->updateSolarProperties (project, true);
+
+    if (this->m_context.settings.general.onlyListProperties) {
+	for (const auto& [key, cur] : project.properties) {
 	    sLog.out (cur->dump ());
 	}
+    }
+}
+
+void WallpaperApplication::updateSolarProperties (const Project& project, bool initial) {
+    const auto& location = this->m_context.settings.general.location;
+
+    if (!location.has_value ()) {
+	return;
+    }
+
+    const std::time_t now = std::time (nullptr);
+
+    for (const auto& [key, value] : this->m_context.settings.general.properties) {
+	const auto expression = SolarTime::parseExpression (value);
+	const auto property = project.properties.find (key);
+
+	if (!expression.has_value () || property == project.properties.end ()) {
+	    continue;
+	}
+
+	if (!property->second->is<PropertySlider> ()) {
+	    if (initial) {
+		sLog.error ("Property ", key, " is not a slider, it cannot be set to ", value);
+	    }
+
+	    continue;
+	}
+
+	const auto hours = SolarTime::localHours (*expression, *location, now);
+
+	if (!hours.has_value ()) {
+	    if (initial) {
+		sLog.error (
+		    "The sun does not ", expression->event == SolarTime::Event::Sunrise ? "rise" : "set",
+		    " today at the given location, keeping ", key, " at ", property->second->toString ()
+		);
+	    }
+
+	    continue;
+	}
+
+	// slider values are floats, ignore differences under a second
+	if (!initial && std::abs (property->second->getFloat () - *hours) < 1.0 / 3600.0) {
+	    continue;
+	}
+
+	sLog.out ("Setting ", key, " to ", value, " (", SolarTime::formatHours (*hours), ")");
+	property->second->update (static_cast<float> (*hours), DynamicValue::UpdateSource::User);
+    }
+}
+
+void WallpaperApplication::updateSolarProperties () {
+    if (!this->m_context.settings.general.location.has_value ()) {
+	return;
+    }
+
+    const auto now = std::chrono::steady_clock::now ();
+
+    if (now < this->m_nextSolarUpdate) {
+	return;
+    }
+
+    this->m_nextSolarUpdate = now + std::chrono::minutes (1);
+
+    for (const auto& [_, project] : this->m_backgrounds) {
+	this->updateSolarProperties (*project, false);
     }
 }
 
@@ -938,6 +1014,7 @@ void WallpaperApplication::render () {
     }
 
     this->updatePlaylists ();
+    this->updateSolarProperties ();
 
     if (!this->m_context.settings.screenshot.take || this->m_screenShotTaken == true) {
 	return;
